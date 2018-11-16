@@ -12,18 +12,18 @@ from keras.layers import Conv2D, Flatten
 from keras.layers import Reshape, Conv2DTranspose, BatchNormalization
 from keras.models import Model
 from PIL import Image
-from sklearn.cluster import KMeans
+from sklearn.mixture import GaussianMixture
 from scipy.stats import mode
 
 numpy.random.seed(42)
 
 # Network parameters
 batch_size = 128
-num_epochs = 20
+num_epochs = 10
 kernel_size = 3
 latent_dim = 32
 strides=2
-layer_filters = [32, 64]
+layer_filters = [32, 64, 128]
 
 # CIFAR10 dataset
 (x_train, y_train), (x_test, y_test) = cifar10.load_data()
@@ -117,14 +117,20 @@ plt.imshow(imgs, interpolation='none', cmap='gray')
 Image.fromarray(imgs).save('corrupted_and_denoised.png')
 
 n_clusters = 10
-clusterer = KMeans(n_clusters=n_clusters, init='k-means++', n_init=1, max_iter=300, n_jobs=-1)
+clusterer = GaussianMixture(n_components=n_clusters, covariance_type='diag')
 clusterer.fit(encoder.predict(x_train))
 predictions = clusterer.predict(encoder.predict(x_test))
 
 scores = []
 y_test = y_test.flatten()
 for i in range(n_clusters):
-    k = mode(predictions[predictions == i])
+    k = mode(predictions[y_test == i])
     scores.append(numpy.logical_and(y_test == i, predictions == k).sum() / sum(y_test == i) * 100)
+
+y_random = y_test.copy()
+numpy.random.shuffle(y_random)
+for i in range(n_clusters):
+    k = mode(predictions[y_random == i])
+    scores.append(numpy.logical_and(y_random == i, predictions == k).sum() / sum(y_random == i) * 100)
 
 print('\n'.join(map(str, scores)))
