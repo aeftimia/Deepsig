@@ -10,7 +10,7 @@ from keras.datasets import mnist
 from keras.engine.topology import Layer
 from keras.layers import Activation, Dense, Input, Lambda
 from keras.layers import Conv2D, Flatten
-from keras.layers import Reshape, Conv2DTranspose, BatchNormalization
+from keras.layers import Reshape, Conv2DTranspose
 from keras.losses import binary_crossentropy
 from keras.models import Model
 from PIL import Image
@@ -21,11 +21,11 @@ numpy.random.seed(42)
 
 # Network parameters
 batch_size = 128
-num_epochs = 30
+num_epochs = 20
 kernel_size = 3
-latent_dims = [16, 2]
+latent_dims = [32, 4]
 strides=2
-layer_filters = [16, 32]
+layer_filters = [16, 64]
 
 # mnist dataset
 (x_train, y_train), (x_test, y_test) = mnist.load_data()
