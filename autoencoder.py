@@ -20,10 +20,10 @@ from scipy.stats import mode
 numpy.random.seed(42)
 
 # Network parameters
-batch_size = 128
-num_epochs = 20
+batch_size = 512
+num_epochs = 30
 kernel_size = 3
-latent_dims = [32, 5]
+latent_dims = [32, 8]
 strides=2
 layer_filters = [16, 64]
 
@@ -130,9 +130,12 @@ autoencoder = Model(common_input, autoencoder_output, name='autoencoder')
 autoencoder.summary()
 
 def elbo_loss(yTrue, yPred):
-    kl_loss = K.sum((z_log_var - K.square(z_mean) - K.exp(z_log_var)) / 2, axis=-1)
+    sample_mean = K.mean(z_mean, 0)
+    # large batch size ~> unbiased estimator
+    sample_log_var = K.log(K.mean(K.exp(z_log_var), 0))
+    kl_loss = K.sum((sample_log_var - K.square(sample_mean) - K.exp(sample_log_var)) / 2, axis=-1)
     reconstruction_loss = binary_crossentropy(K.flatten(yTrue), K.flatten(yPred)) * numpy.prod(x_train.shape[1:])
-    return K.mean(reconstruction_loss - kl_loss)
+    return K.mean(reconstruction_loss) - kl_loss
 
 autoencoder.compile(loss=elbo_loss, optimizer='adam')
 
