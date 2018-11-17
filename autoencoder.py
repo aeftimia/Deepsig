@@ -22,7 +22,7 @@ numpy.random.seed(42)
 batch_size = 128
 num_epochs = 10
 kernel_size = 3
-latent_dims = [128, 3]
+latent_dims = [128, 64, 2]
 strides=2
 layer_filters = [32, 64]
 
