@@ -5,7 +5,7 @@ import random
 import tensorflow
 
 from keras import backend as K
-from keras.datasets import cifar10
+from keras.datasets import mnist
 from keras.engine.topology import Layer
 from keras.layers import Activation, Dense, Input
 from keras.layers import Conv2D, Flatten
@@ -21,21 +21,24 @@ numpy.random.seed(42)
 batch_size = 128
 num_epochs = 10
 kernel_size = 3
-latent_dim = 32
+latent_dims = [128, 2]
 strides=2
-layer_filters = [32, 64, 128]
+layer_filters = [32, 64]
 
 # CIFAR10 dataset
-(x_train, y_train), (x_test, y_test) = cifar10.load_data()
+(x_train, y_train), (x_test, y_test) = mnist.load_data()
 
 def preprocess(data):
+    if data.ndim == 3:
+        data = numpy.asarray([data]).transpose((1, 2, 3, 0))
+    print(data.shape)
     maxima = data.max(axis=tuple(range(1, data.ndim))).reshape((len(data),) + (1,) * (data.ndim - 1))
     return data.astype('float32') / maxima, maxima
 
 image_size = x_train.shape[1]
-num_channels = x_train.shape[-1]
-input_shape = x_train.shape[1:]
 x_train, train_decode = preprocess(x_train)
+input_shape = x_train.shape[1:]
+num_channels = x_train.shape[-1]
 x_test, test_decode = preprocess(x_test)
 
 x_train = numpy.clip(x_train, 0., 1.)
@@ -69,13 +72,23 @@ x = Flatten()(x)
 flat_shape = K.int_shape(x)[1:]
 
 # Latent Layer
-x = Dense(latent_dim, name='latent_layer')(x)
+for latent_dim in latent_dims:
+    layer = Dense(latent_dim, activation='relu')
+    x = layer(x)
+layer.activation=Activation(None)
+layer.name='latent_layer'
+
 encoder = Model(common_input, x, name='encoder')
 encoder.summary()
 
 # Decoder
 decoder_input = Input(shape=(latent_dim,), name='decoder_input')
-x = Dense(flat_shape[0], name='latent_layer_prime')(decoder_input)
+x = decoder_input
+for i, latent_dim in enumerate(latent_dims[::-1]):
+    layer = Dense(flat_shape[0], activation='relu')
+    if i == 0:
+        layer.activation = Activation(None)
+    x = layer(x)
 x = Reshape(conv_shape)(x)
 
 for layer in decoder_layers[::-1]:
@@ -113,11 +126,11 @@ plt.axis('off')
 plt.title('Original images: top rows, '
           'Corrupted Input: middle rows, '
           'Denoised Input:  third rows')
-plt.imshow(imgs, interpolation='none', cmap='gray')
-Image.fromarray(imgs).save('corrupted_and_denoised.png')
+# plt.imshow(imgs, interpolation='none', cmap='gray')
+# Image.fromarray(imgs).save('corrupted_and_denoised.png')
 
 n_clusters = 10
-clusterer = GaussianMixture(n_components=n_clusters, covariance_type='diag')
+clusterer = GaussianMixture(n_components=n_clusters, covariance_type='diag', max_iter=1000)
 clusterer.fit(encoder.predict(x_train))
 predictions = clusterer.predict(encoder.predict(x_test))
 
@@ -127,10 +140,14 @@ for i in range(n_clusters):
     k = mode(predictions[y_test == i])
     scores.append(numpy.logical_and(y_test == i, predictions == k).sum() / sum(y_test == i) * 100)
 
+print(numpy.mean(scores))
+print('\n'.join(map(str, scores)))
 y_random = y_test.copy()
 numpy.random.shuffle(y_random)
+scores = []
 for i in range(n_clusters):
     k = mode(predictions[y_random == i])
     scores.append(numpy.logical_and(y_random == i, predictions == k).sum() / sum(y_random == i) * 100)
 
 print('\n'.join(map(str, scores)))
+print(numpy.mean(scores))
