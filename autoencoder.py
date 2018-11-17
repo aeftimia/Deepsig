@@ -1,6 +1,7 @@
 import keras
 import numpy
 import matplotlib.pyplot as plt
+import os
 import random
 import tensorflow
 
@@ -20,19 +21,20 @@ numpy.random.seed(42)
 
 # Network parameters
 batch_size = 128
-num_epochs = 10
+num_epochs = 30
 kernel_size = 3
-latent_dims = [128, 64, 2]
+latent_dims = [16, 2]
 strides=2
-layer_filters = [32, 64]
+layer_filters = [16, 32]
 
 # mnist dataset
 (x_train, y_train), (x_test, y_test) = mnist.load_data()
+y_train = y_train.flatten()
+y_test = y_test.flatten()
 
 def preprocess(data):
     if data.ndim == 3:
         data = numpy.asarray([data]).transpose((1, 2, 3, 0))
-    print(data.shape)
     maxima = data.max(axis=tuple(range(1, data.ndim))).reshape((len(data),) + (1,) * (data.ndim - 1))
     return data.astype('float32') / maxima, maxima
 
@@ -128,7 +130,7 @@ autoencoder = Model(common_input, autoencoder_output, name='autoencoder')
 autoencoder.summary()
 
 def elbo_loss(yTrue, yPred):
-    kl_loss = K.sum(z_log_var - (K.square(z_mean) + K.exp(z_log_var)) / 2, axis=-1)
+    kl_loss = K.sum((z_log_var - K.square(z_mean) - K.exp(z_log_var)) / 2, axis=-1)
     reconstruction_loss = binary_crossentropy(K.flatten(yTrue), K.flatten(yPred)) * numpy.prod(x_train.shape[1:])
     return K.mean(reconstruction_loss - kl_loss)
 
@@ -168,18 +170,89 @@ predictions = clusterer.predict(encoder.predict(x_test)[1])
 
 scores = []
 y_test = y_test.flatten()
+print(y_test[:10])
+print('pred')
+print(predictions[:10])
 for i in range(n_clusters):
-    k = mode(predictions[y_test == i])
-    scores.append(numpy.logical_and(y_test == i, predictions == k).sum() / sum(y_test == i) * 100)
+    k = mode(predictions[y_test == i]).mode[0]
+    scores.append(numpy.logical_and(y_test == i, predictions == k).sum() / sum(predictions == k) * 100)
 
 print(numpy.mean(scores))
 print('\n'.join(map(str, scores)))
 y_random = y_test.copy()
 numpy.random.shuffle(y_random)
+print(y_random[:10])
+print('pred')
+print(predictions[:10])
 scores = []
 for i in range(n_clusters):
-    k = mode(predictions[y_random == i])
-    scores.append(numpy.logical_and(y_random == i, predictions == k).sum() / sum(y_random == i) * 100)
+    k = mode(predictions[y_random == i]).mode[0]
+    scores.append(numpy.logical_and(y_random == i, predictions == k).sum() / sum(predictions == k) * 100)
 
-print('\n'.join(map(str, scores)))
 print(numpy.mean(scores))
+print('\n'.join(map(str, scores)))
+
+def plot_results(models,
+                 data,
+                 batch_size=128,
+                 model_name="vae_mnist"):
+    """Plots labels and MNIST digits as function of 2-dim latent vector
+
+    # Arguments:
+        models (tuple): encoder and decoder models
+        data (tuple): test data and label
+        batch_size (int): prediction batch size
+        model_name (string): which model is using this function
+    """
+
+    encoder, decoder = models
+    x_test, y_test = data
+    os.makedirs(model_name, exist_ok=True)
+
+    filename = os.path.join(model_name, "vae_mean.png")
+    # display a 2D plot of the digit classes in the latent space
+    _, z_mean, _ = encoder.predict(x_test,
+                                   batch_size=batch_size)
+    plt.figure(figsize=(12, 10))
+    plt.scatter(z_mean[:, 0], z_mean[:, 1], c=y_test)
+    plt.colorbar()
+    plt.xlabel("z[0]")
+    plt.ylabel("z[1]")
+    plt.savefig(filename)
+    plt.show()
+
+    filename = os.path.join(model_name, "digits_over_latent.png")
+    # display a 30x30 2D manifold of digits
+    n = 30
+    digit_size = x_test.shape[1]
+    figure = numpy.zeros((digit_size * n, digit_size * n))
+    # linearly spaced coordinates corresponding to the 2D plot
+    # of digit classes in the latent space
+    grid_x = numpy.linspace(-4, 4, n)
+    grid_y = numpy.linspace(-4, 4, n)[::-1]
+
+    for i, yi in enumerate(grid_y):
+        for j, xi in enumerate(grid_x):
+            z_sample = numpy.array([[xi, yi]])
+            x_decoded = decoder.predict(z_sample)
+            digit = x_decoded[0].reshape(x_train.shape[1:])
+            if digit.ndim == 3:
+                digit = digit.mean(2)
+            figure[i * digit_size: (i + 1) * digit_size,
+                   j * digit_size: (j + 1) * digit_size] = digit
+
+    plt.figure(figsize=(10, 10))
+    start_range = digit_size // 2
+    end_range = n * digit_size + start_range + 1
+    pixel_range = numpy.arange(start_range, end_range, digit_size)
+    sample_range_x = numpy.round(grid_x, 1)
+    sample_range_y = numpy.round(grid_y, 1)
+    plt.xticks(pixel_range, sample_range_x)
+    plt.yticks(pixel_range, sample_range_y)
+    plt.xlabel("z[0]")
+    plt.ylabel("z[1]")
+    plt.imshow(figure, cmap='Greys_r')
+    plt.savefig(filename)
+    plt.show()
+
+plot_results((encoder, decoder), (x_test, y_test), batch_size=batch_size, model_name="vae_cnn")
