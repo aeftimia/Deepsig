@@ -7,9 +7,10 @@ import tensorflow
 from keras import backend as K
 from keras.datasets import mnist
 from keras.engine.topology import Layer
-from keras.layers import Activation, Dense, Input
+from keras.layers import Activation, Dense, Input, Lambda
 from keras.layers import Conv2D, Flatten
 from keras.layers import Reshape, Conv2DTranspose, BatchNormalization
+from keras.losses import binary_crossentropy
 from keras.models import Model
 from PIL import Image
 from sklearn.mixture import GaussianMixture
@@ -21,11 +22,11 @@ numpy.random.seed(42)
 batch_size = 128
 num_epochs = 10
 kernel_size = 3
-latent_dims = [128, 2]
+latent_dims = [128, 3]
 strides=2
 layer_filters = [32, 64]
 
-# CIFAR10 dataset
+# mnist dataset
 (x_train, y_train), (x_test, y_test) = mnist.load_data()
 
 def preprocess(data):
@@ -72,20 +73,45 @@ x = Flatten()(x)
 flat_shape = K.int_shape(x)[1:]
 
 # Latent Layer
-for latent_dim in latent_dims:
+for latent_dim in latent_dims[:-1]:
     layer = Dense(latent_dim, activation='relu')
     x = layer(x)
-layer.activation=Activation(None)
-layer.name='latent_layer'
 
-encoder = Model(common_input, x, name='encoder')
+def sampling(args):
+    """Reparameterization trick by sampling fr an isotropic unit Gaussian.
+
+    # Arguments:
+        args (tensor): mean and log of variance of Q(z|X)
+
+    # Returns:
+        z (tensor): sampled latent vector
+    """
+
+    z_mean, z_log_var = args
+    batch = K.shape(z_mean)[0]
+    dim = K.int_shape(z_mean)[1]
+    # by default, random_normal has mean=0 and std=1.0
+    epsilon = K.random_normal(shape=(batch, dim))
+    return z_mean + K.exp(0.5 * z_log_var) * epsilon
+
+latent_dim = latent_dims[-1]
+z_mean = Dense(latent_dim, name='z_mean')(x)
+z_log_var = Dense(latent_dim, name='z_log_var')(x)
+
+# use reparameterization trick to push the sampling out as input
+# note that "output_shape" isn't necessary with the TensorFlow backend
+z = Lambda(sampling, output_shape=(latent_dim,), name='z')([z_mean, z_log_var])
+# z = Dense(latent_dim, name='latent_layer')(x)
+# layer.activation=Activation(None)
+
+encoder = Model(common_input, [z, z_mean, z_log_var], name='encoder')
 encoder.summary()
 
 # Decoder
 decoder_input = Input(shape=(latent_dim,), name='decoder_input')
 x = decoder_input
-for i, latent_dim in enumerate(latent_dims[::-1]):
-    layer = Dense(flat_shape[0], activation='relu')
+for i, latent_dim in enumerate(latent_dims[-2::-1] + [numpy.prod(encoder_layers[-1].output_shape[1:])]):
+    layer = Dense(latent_dim, activation='relu')
     if i == 0:
         layer.activation = Activation(None)
     x = layer(x)
@@ -97,10 +123,16 @@ decoder = Model(decoder_input, x, name='decoder')
 decoder.summary()
 
 # Autoencoder
-autoencoder = Model(common_input, decoder(encoder(common_input)), name='autoencoder')
+autoencoder_output = decoder(encoder(common_input)[0])
+autoencoder = Model(common_input, autoencoder_output, name='autoencoder')
 autoencoder.summary()
 
-autoencoder.compile(loss='mse', optimizer='adam')
+def elbo_loss(yTrue, yPred):
+    kl_loss = K.sum(z_log_var - (K.square(z_mean) + K.exp(z_log_var)) / 2, axis=-1)
+    reconstruction_loss = binary_crossentropy(K.flatten(yTrue), K.flatten(yPred)) * numpy.prod(x_train.shape[1:])
+    return K.mean(reconstruction_loss - kl_loss)
+
+autoencoder.compile(loss=elbo_loss, optimizer='adam')
 
 # Train the autoencoder
 autoencoder.fit(x_train,
@@ -131,8 +163,8 @@ plt.title('Original images: top rows, '
 
 n_clusters = 10
 clusterer = GaussianMixture(n_components=n_clusters, covariance_type='diag', max_iter=1000)
-clusterer.fit(encoder.predict(x_train))
-predictions = clusterer.predict(encoder.predict(x_test))
+clusterer.fit(encoder.predict(x_train)[1])
+predictions = clusterer.predict(encoder.predict(x_test)[1])
 
 scores = []
 y_test = y_test.flatten()
