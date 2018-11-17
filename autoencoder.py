@@ -14,7 +14,7 @@ from keras.layers import Reshape, Conv2DTranspose, BatchNormalization
 from keras.losses import binary_crossentropy
 from keras.models import Model
 from PIL import Image
-from sklearn.mixture import GaussianMixture
+from sklearn.cluster import KMeans
 from scipy.stats import mode
 
 numpy.random.seed(42)
@@ -164,7 +164,7 @@ plt.title('Original images: top rows, '
 # Image.fromarray(imgs).save('corrupted_and_denoised.png')
 
 n_clusters = 10
-clusterer = GaussianMixture(n_components=n_clusters, covariance_type='diag', max_iter=1000)
+clusterer = KMeans(n_clusters=n_clusters, init='k-means++', n_init=1, max_iter=300, n_jobs=-1)
 clusterer.fit(encoder.predict(x_train)[1])
 predictions = clusterer.predict(encoder.predict(x_test)[1])
 
