@@ -22,7 +22,7 @@ numpy.random.seed(42)
 # Network parameters
 batch_size = 128
 num_epochs = 30
-kernel_size = 3
+kernel_size = 4
 latent_dims = [16, 2]
 strides=2
 layer_filters = [16, 32]
@@ -225,7 +225,7 @@ def plot_results(models,
     plt.savefig(filename)
     plt.show()
 
-    filename = os.path.join(model_name, "digits_over_latent.png")
+    filename = os.path.join(model_name, "digits_over_latent_variational.png")
     # display a 30x30 2D manifold of digits
     n = 30
     digit_size = x_test.shape[1]
