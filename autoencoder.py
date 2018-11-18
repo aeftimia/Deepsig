@@ -21,7 +21,7 @@ numpy.random.seed(42)
 
 # Network parameters
 batch_size = 128
-num_epochs = 30
+num_epochs = 3
 kernel_size = 4
 latent_dims = [16, 2]
 strides=2
@@ -177,13 +177,12 @@ for _ in range(10):
 
     gan_train_x, gan_train_y = generate_adversarial_data(x_train)
     discriminator = Model(decoder_input, x, name='discriminator')
-    discriminator.compile(loss='binary_crossentropy', optimizer='adam')
     discriminator.trainable = False
     decoder_trainer = Model(decoder_input, discriminator(encoder_mean(decoder(decoder_input))), name='autoencoder_trainer')
     decoder_trainer.compile(loss='binary_crossentropy', optimizer='adam')
     decoder_trainer.fit(gan_train_x,
             numpy.ones(len(gan_train_x)),
-            validation_data=(gan_test_x, numpy.ones(len(gan_test_x))),
+            validation_data=(gan_test_x, numpy.zeros(len(gan_test_x))),
             epochs=num_epochs,
             batch_size=batch_size)
 
