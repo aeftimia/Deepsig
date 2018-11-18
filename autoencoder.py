@@ -78,6 +78,7 @@ flat_shape = K.int_shape(x)[1:]
 for latent_dim in latent_dims[:-1]:
     layer = Dense(latent_dim, activation='relu')
     x = layer(x)
+layer.activation = Activation(None)
 
 def sampling(args):
     """Reparameterization trick by sampling fr an isotropic unit Gaussian.
