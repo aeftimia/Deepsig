@@ -21,8 +21,8 @@ numpy.random.seed(42)
 
 # Network parameters
 batch_size = 128
-num_epochs = 30
-kernel_size = 3
+num_epochs = 3
+kernel_size = 4
 latent_dims = [16, 2]
 strides=2
 layer_filters = [16, 32]
@@ -108,10 +108,11 @@ z = Lambda(sampling, output_shape=(latent_dim,), name='z')([z_mean, z_log_var])
 # layer.activation=Activation(None)
 
 encoder = Model(common_input, [z, z_mean, z_log_var], name='encoder')
+encoder_mean = Model(common_input, z_mean, name='encoder')
 encoder.summary()
 
 # Decoder
-decoder_input = Input(shape=(latent_dim,), name='decoder_input')
+decoder_input = Input(shape=(latent_dims[-1],), name='decoder_input')
 x = decoder_input
 for i, latent_dim in enumerate(latent_dims[-2::-1] + [numpy.prod(encoder_layers[-1].output_shape[1:])]):
     layer = Dense(latent_dim, activation='relu')
@@ -134,38 +135,28 @@ def elbo_loss(yTrue, yPred):
     sample_mean = K.mean(z_mean, 0)
     # large batch size ~> unbiased estimator
     sample_log_var = K.log(K.mean(K.exp(z_log_var), 0))
-    kl_loss = K.sum((-sample_log_var + K.square(sample_mean) + K.exp(sample_log_var)) / 2, axis=-1)
+    kl_loss = K.sum((-z_log_var + K.square(z_mean) + K.exp(z_log_var)) / 2, axis=-1)
     reconstruction_loss = binary_crossentropy(K.flatten(yTrue), K.flatten(yPred)) * numpy.prod(x_train.shape[1:])
-    return K.mean(reconstruction_loss) + kl_loss
+    return K.mean(reconstruction_loss + kl_loss)
 
+autodecoder = Model(decoder_input, encoder_mean(decoder(decoder_input)))
+autodecoder.compile(loss='binary_crossentropy', optimizer='adam')
 autoencoder.compile(loss=elbo_loss, optimizer='adam')
 
 # Train the autoencoder
-autoencoder.fit(x_train,
-        x_train,
-        validation_data=(x_test, x_test),
-        epochs=num_epochs,
-        batch_size=batch_size)
-
-# Test reconstruction
-x_decoded = autoencoder.predict(x_test)
-
-# Display the 1st 8 reconstructed images
-rows, cols = 10, 30
-num = rows * cols
-imgs = numpy.concatenate([(x_test * test_decode)[:num], (x_decoded * test_decode)[:num]])
-imgs = imgs.reshape((rows * 2, cols) + x_test.shape[1:])
-imgs = numpy.vstack(numpy.split(imgs, 2, axis=1))
-imgs = imgs.reshape((rows * 2, -1,) + x_test.shape[1:])
-imgs = numpy.vstack([numpy.hstack(i) for i in imgs])
-imgs = imgs.astype(numpy.uint8)
-plt.figure()
-plt.axis('off')
-plt.title('Original images: top rows, '
-          'Corrupted Input: middle rows, '
-          'Denoised Input:  third rows')
-# plt.imshow(imgs, interpolation='none', cmap='gray')
-# Image.fromarray(imgs).save('corrupted_and_denoised.png')
+for _ in range(10):
+    train = numpy.random.normal(size=(len(x_train), latent_dims[-1]))
+    test = numpy.random.normal(size=(len(x_test), latent_dims[-1]))
+    autodecoder.fit(train,
+            train,
+            validation_data=(test, test),
+            epochs=num_epochs,
+            batch_size=batch_size)
+    autoencoder.fit(x_train,
+            x_train,
+            validation_data=(x_test, x_test),
+            epochs=num_epochs,
+            batch_size=batch_size)
 
 n_clusters = 10
 clusterer = GaussianMixture(n_components=n_clusters, covariance_type='diag', max_iter=1000)
@@ -225,7 +216,7 @@ def plot_results(models,
     plt.savefig(filename)
     plt.show()
 
-    filename = os.path.join(model_name, "digits_over_latent.png")
+    filename = os.path.join(model_name, "digits_over_latent_double_vae.png")
     # display a 30x30 2D manifold of digits
     n = 30
     digit_size = x_test.shape[1]
