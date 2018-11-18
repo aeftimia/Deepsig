@@ -22,7 +22,7 @@ numpy.random.seed(42)
 # Network parameters
 batch_size = 128
 num_epochs = 30
-kernel_size = 3
+kernel_size = 4
 latent_dims = [16, 2]
 strides=2
 layer_filters = [16, 32]
@@ -108,6 +108,7 @@ z = Lambda(sampling, output_shape=(latent_dim,), name='z')([z_mean, z_log_var])
 # layer.activation=Activation(None)
 
 encoder = Model(common_input, [z, z_mean, z_log_var], name='encoder')
+encoder_mean = Model(common_input, z_mean, name='encoder_mean')
 encoder.summary()
 
 # Decoder
@@ -134,9 +135,9 @@ def elbo_loss(yTrue, yPred):
     sample_mean = K.mean(z_mean, 0)
     # large batch size ~> unbiased estimator
     sample_log_var = K.log(K.mean(K.exp(z_log_var), 0))
-    kl_loss = K.sum((-sample_log_var + K.square(sample_mean) + K.exp(sample_log_var)) / 2, axis=-1)
+    kl_loss = K.sum((-z_log_var + K.square(z_mean) + K.exp(z_log_var)) / 2, axis=-1)
     reconstruction_loss = binary_crossentropy(K.flatten(yTrue), K.flatten(yPred)) * numpy.prod(x_train.shape[1:])
-    return K.mean(reconstruction_loss) + kl_loss
+    return K.mean(reconstruction_loss + kl_loss)
 
 autoencoder.compile(loss=elbo_loss, optimizer='adam')
 
@@ -147,25 +148,44 @@ autoencoder.fit(x_train,
         epochs=num_epochs,
         batch_size=batch_size)
 
-# Test reconstruction
-x_decoded = autoencoder.predict(x_test)
+# Train reconstruction with discriminator
+def generate_adversarial_data(sample_data):
+    x_encoded = encoder.predict(sample_data)[1]
+    fake_encode = numpy.random.normal(size=(len(sample_data), latent_dims[-1]))
+    x = numpy.concatenate((x_encoded, fake_encode))
+    y = numpy.concatenate((numpy.ones(len(x_encoded)), numpy.zeros((len(fake_encode)))))
+    indices = numpy.arange(len(x))
+    numpy.random.shuffle(indices)
+    x = x[indices]
+    return x, y[indices]
 
-# Display the 1st 8 reconstructed images
-rows, cols = 10, 30
-num = rows * cols
-imgs = numpy.concatenate([(x_test * test_decode)[:num], (x_decoded * test_decode)[:num]])
-imgs = imgs.reshape((rows * 2, cols) + x_test.shape[1:])
-imgs = numpy.vstack(numpy.split(imgs, 2, axis=1))
-imgs = imgs.reshape((rows * 2, -1,) + x_test.shape[1:])
-imgs = numpy.vstack([numpy.hstack(i) for i in imgs])
-imgs = imgs.astype(numpy.uint8)
-plt.figure()
-plt.axis('off')
-plt.title('Original images: top rows, '
-          'Corrupted Input: middle rows, '
-          'Denoised Input:  third rows')
-# plt.imshow(imgs, interpolation='none', cmap='gray')
-# Image.fromarray(imgs).save('corrupted_and_denoised.png')
+x = Dense(64, activation='relu')(decoder_input)
+x = Dense(128, activation='relu')(x)
+x = Dense(64, activation='relu')(x)
+x = Dense(1, activation='sigmoid', name='discriminator')(x)
+
+for _ in range(10):
+    gan_train_x, gan_train_y = generate_adversarial_data(x_train)
+    gan_test_x, gan_test_y = generate_adversarial_data(x_test)
+    discriminator = Model(decoder_input, x, name='discriminator')
+    discriminator.compile(loss='binary_crossentropy', optimizer='adam')
+    discriminator.fit(gan_train_x,
+            gan_train_y,
+            validation_data=(gan_test_x, gan_test_y),
+            epochs=num_epochs,
+            batch_size=batch_size)
+
+    gan_train_x, gan_train_y = generate_adversarial_data(x_train)
+    discriminator = Model(decoder_input, x, name='discriminator')
+    discriminator.compile(loss='binary_crossentropy', optimizer='adam')
+    discriminator.trainable = False
+    decoder_trainer = Model(decoder_input, discriminator(encoder_mean(decoder(decoder_input))), name='autoencoder_trainer')
+    decoder_trainer.compile(loss='binary_crossentropy', optimizer='adam')
+    decoder_trainer.fit(gan_train_x,
+            numpy.ones(len(gan_train_x)),
+            validation_data=(gan_test_x, numpy.ones(len(gan_test_x))),
+            epochs=num_epochs,
+            batch_size=batch_size)
 
 n_clusters = 10
 clusterer = GaussianMixture(n_components=n_clusters, covariance_type='diag', max_iter=1000)
@@ -225,7 +245,7 @@ def plot_results(models,
     plt.savefig(filename)
     plt.show()
 
-    filename = os.path.join(model_name, "digits_over_latent.png")
+    filename = os.path.join(model_name, "digits_over_latent_gan.png")
     # display a 30x30 2D manifold of digits
     n = 30
     digit_size = x_test.shape[1]
