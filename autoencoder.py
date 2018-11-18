@@ -20,12 +20,12 @@ from scipy.stats import mode
 numpy.random.seed(42)
 
 # Network parameters
-batch_size = 512
+batch_size = 128
 num_epochs = 30
-kernel_size = 3
-latent_dims = [32, 8]
+kernel_size = 4
+latent_dims = [16, 2]
 strides=2
-layer_filters = [16, 64]
+layer_filters = [32, 64]
 
 # mnist dataset
 (x_train, y_train), (x_test, y_test) = mnist.load_data()
@@ -78,6 +78,7 @@ flat_shape = K.int_shape(x)[1:]
 for latent_dim in latent_dims[:-1]:
     layer = Dense(latent_dim, activation='relu')
     x = layer(x)
+layer.activation = Activation('sigmoid')
 
 def sampling(args):
     """Reparameterization trick by sampling fr an isotropic unit Gaussian.
@@ -224,7 +225,7 @@ def plot_results(models,
     plt.savefig(filename)
     plt.show()
 
-    filename = os.path.join(model_name, "digits_over_latent.png")
+    filename = os.path.join(model_name, "digits_over_latent_me.png")
     # display a 30x30 2D manifold of digits
     n = 30
     digit_size = x_test.shape[1]
