@@ -134,9 +134,9 @@ def elbo_loss(yTrue, yPred):
     sample_mean = K.mean(z_mean, 0)
     # large batch size ~> unbiased estimator
     sample_log_var = K.log(K.mean(K.exp(z_log_var), 0))
-    kl_loss = K.sum((sample_log_var - K.square(sample_mean) - K.exp(sample_log_var)) / 2, axis=-1)
+    kl_loss = K.sum((-sample_log_var + K.square(sample_mean) + K.exp(sample_log_var)) / 2, axis=-1)
     reconstruction_loss = binary_crossentropy(K.flatten(yTrue), K.flatten(yPred)) * numpy.prod(x_train.shape[1:])
-    return K.mean(reconstruction_loss) - kl_loss
+    return K.mean(reconstruction_loss) + kl_loss
 
 autoencoder.compile(loss=elbo_loss, optimizer='adam')
 
