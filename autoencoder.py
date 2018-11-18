@@ -127,7 +127,7 @@ decoder = Model(decoder_input, x, name='decoder')
 decoder.summary()
 
 # Autoencoder
-autoencoder_output = decoder(encoder(common_input)[0])
+autoencoder_output = decoder(encoder_mean(common_input))
 autoencoder = Model(common_input, autoencoder_output, name='autoencoder')
 autoencoder.summary()
 
@@ -141,7 +141,7 @@ def elbo_loss(yTrue, yPred):
 
 autodecoder = Model(decoder_input, encoder_mean(decoder(decoder_input)))
 autodecoder.compile(loss='binary_crossentropy', optimizer='adam')
-autoencoder.compile(loss=elbo_loss, optimizer='adam')
+autoencoder.compile(loss='binary_crossentropy', optimizer='adam')
 
 # Train the autoencoder
 for _ in range(10):
@@ -216,7 +216,7 @@ def plot_results(models,
     plt.savefig(filename)
     plt.show()
 
-    filename = os.path.join(model_name, "digits_over_latent_double_vae.png")
+    filename = os.path.join(model_name, "digits_over_latent_double.png")
     # display a 30x30 2D manifold of digits
     n = 30
     digit_size = x_test.shape[1]
