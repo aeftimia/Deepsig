@@ -20,12 +20,12 @@ from scipy.stats import mode
 numpy.random.seed(42)
 
 # Network parameters
-batch_size = 512
+batch_size = 128
 num_epochs = 30
 kernel_size = 3
-latent_dims = [32, 8]
+latent_dims = [16, 2]
 strides=2
-layer_filters = [16, 64]
+layer_filters = [16, 32]
 
 # mnist dataset
 (x_train, y_train), (x_test, y_test) = mnist.load_data()
