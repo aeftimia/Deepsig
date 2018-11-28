@@ -150,34 +150,18 @@ autoencoder.fit(x_train,
         epochs=num_epochs,
         batch_size=batch_size)
 
-n_clusters = 10
-clusterer = GaussianMixture(n_components=n_clusters, covariance_type='diag', max_iter=1000)
-clusterer.fit(encoder.predict(x_train)[1])
-predictions = clusterer.predict(encoder.predict(x_test)[1])
+latent = encoder_mean.predict(x_train)
 
-scores = []
-y_test = y_test.flatten()
-print(y_test[:10])
-print('pred')
-print(predictions[:10])
-for i in range(n_clusters):
-    k = mode(predictions[y_test == i]).mode[0]
-    scores.append(numpy.logical_and(y_test == i, predictions == k).sum() / sum(predictions == k) * 100)
+means = []
+for i in range(len(frozenset(y_train))):
+    means.append(latent[y_train == i].mean(0))
+means = numpy.asarray(means)
 
-print(numpy.mean(scores))
-print('\n'.join(map(str, scores)))
-y_random = y_test.copy()
-numpy.random.shuffle(y_random)
-print(y_random[:10])
-print('pred')
-print(predictions[:10])
-scores = []
-for i in range(n_clusters):
-    k = mode(predictions[y_random == i]).mode[0]
-    scores.append(numpy.logical_and(y_random == i, predictions == k).sum() / sum(predictions == k) * 100)
-
-print(numpy.mean(scores))
-print('\n'.join(map(str, scores)))
+latent = encoder_mean.predict(x_test)
+print((latent - means[:, numpy.newaxis]).shape)
+predictions = numpy.argmin(((latent - means[:, numpy.newaxis]) ** 2).sum(2), axis=0)
+print(latent)
+print((predictions == y_test).mean() * 100)
 
 def plot_results(models,
                  data,
